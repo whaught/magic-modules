@@ -25,7 +25,11 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 			log.Printf("[DEBUG] Could not compile %s.", idFormat)
 			return fmt.Errorf("Import is not supported. Invalid regex formats.")
 		}
-
+		identity, err := d.Identity()
+		if err != nil {
+			return err
+		}
+		log.Printf("[DEBUG] Identity Schema %s", identity)
 		if fieldValues := re.FindStringSubmatch(d.Id()); fieldValues != nil {
 			log.Printf("[DEBUG] matching ID %s to regex %s.", d.Id(), idFormat)
 			// Starting at index 1, the first match is the full string.
@@ -33,6 +37,10 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 				fieldName := re.SubexpNames()[i]
 				fieldValue := fieldValues[i]
 				log.Printf("[DEBUG] importing %s = %s", fieldName, fieldValue)
+				identity, err := d.Identity()
+				if err != nil {
+					return err
+				}
 				// Because we do not know at this point whether 'fieldName'
 				// corresponds to a TypeString or a TypeInteger in the resource
 				// schema, we need to determine the type in an unintuitive way.
@@ -47,6 +55,10 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 					if err = d.Set(fieldName, fieldValue); err != nil {
 						return err
 					}
+					if err = identity.Set(fieldName, fieldValue); err != nil {
+						return err
+					}
+					log.Printf("[DEBUG] Identity Schema after setDefaultValues %s", identity.Get(fieldName))
 				} else if _, ok := val.(int); ok {
 					if intVal, atoiErr := strconv.Atoi(fieldValue); atoiErr == nil {
 						// If the value can be parsed as an integer, we try to set the
@@ -54,6 +66,10 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 						if err = d.Set(fieldName, intVal); err != nil {
 							return err
 						}
+						if err = identity.Set(fieldName, intVal); err != nil {
+							return err
+						}
+						log.Printf("[DEBUG] Identity Schema after setDefaultValues %s", identity.Get(fieldName))
 					} else {
 						return fmt.Errorf("%s appears to be an integer, but %v cannot be parsed as an int", fieldName, fieldValue)
 					}
@@ -62,14 +78,20 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 						"cannot handle %s, which currently has value %v, and should be set to %#v, during import", fieldName, val, fieldValue)
 				}
 			}
-			return nil
-		} else if d.Id() == "" {
+
 			// The first id format is applied first and contains all the fields.
 			err := setDefaultValues(idRegexes[0], nil, d, config)
 			if err != nil {
 				return err
 			}
 
+			err = setDefaultValues(idRegexes[0], identity, d, config)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		} else if d.Id() == "" {
 			identity, err := d.Identity()
 			if err != nil {
 				return err
@@ -96,7 +118,7 @@ func identityImport(re *regexp.Regexp, identity *schema.IdentityData, idFormat s
 			log.Printf("[DEBUG] Group %s = %s Identity Group", group, val)
 			identity.Set(group, val)
 		}
-		if identityValue, identityExists := identity.GetOk(group); identityExists {
+		if identityValue, identityExists := identity.GetOk(group); identityExists && group != "" {
 			log.Printf("[DEBUG] identity Importing %s = %s", group, identityValue)
 			d.Set(group, identityValue)
 		} else {
