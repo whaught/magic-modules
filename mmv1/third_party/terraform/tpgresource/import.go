@@ -37,10 +37,6 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 				fieldName := re.SubexpNames()[i]
 				fieldValue := fieldValues[i]
 				log.Printf("[DEBUG] importing %s = %s", fieldName, fieldValue)
-				identity, err := d.Identity()
-				if err != nil {
-					return err
-				}
 				// Because we do not know at this point whether 'fieldName'
 				// corresponds to a TypeString or a TypeInteger in the resource
 				// schema, we need to determine the type in an unintuitive way.
@@ -92,10 +88,6 @@ func ParseImportId(idRegexes []string, d TerraformResourceData, config *transpor
 
 			return nil
 		} else if d.Id() == "" {
-			identity, err := d.Identity()
-			if err != nil {
-				return err
-			}
 			if err := identityImport(re, identity, idFormat, d); err != nil {
 				return err
 			}
